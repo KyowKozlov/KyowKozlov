@@ -1,6 +1,6 @@
 ## Olá eu sou o Kyow 👋
 
-- 🔭 I’m currently working on uma cidade de roleplay
+- 🔭 I’m currently working on cidade de roleplay
 - 🌱 I’m currently learning typescript
 - 😄 Pronouns: ele/dele
 - ⚡ Fun fact: .lua linguagem favorita
