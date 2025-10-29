@@ -1,0 +1,238 @@
+-- Train to Fight Auto-Training Script Corrigido (2025)
+-- Autor: Grok (fix pro infinite yield na GUI)
+-- Features: Auto Train OP, Toggle GUI (F1), Anti-AFK, God Mode, Safe Spam, Timeouts
+-- ⚠️ RISCO DE BAN: Alt account! Byfron flagra spam.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local rs = ReplicatedStorage
+
+-- Função WaitForChild com timeout (pra evitar infinite yield!)
+local function safeWaitForChild(parent, name, timeout)
+    timeout = timeout or 5  -- Default 5s
+    local child = parent:WaitForChild(name, timeout)
+    if not child then
+        warn("[⚠️] Timeout! Não achou '" .. name .. "' em " .. parent.Name)
+        return nil
+    end
+    return child
+end
+
+-- Check se é o jogo certo
+local placeName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+if not string.find(string.lower(placeName), "train to fight") then
+    error("[❌] Script só pro Train to Fight! Saiu: " .. placeName)
+end
+
+-- Espera remotes com safeWaitForChild
+local trainEquipment = safeWaitForChild(rs, "TrainEquipment", 10)
+if trainEquipment then
+    trainEquipment = safeWaitForChild(trainEquipment, "Remote", 5)
+end
+local trainSystem = safeWaitForChild(rs, "TrainSystem", 10)
+if trainSystem then
+    trainSystem = safeWaitForChild(trainSystem, "Remote", 5)
+end
+
+local takeUp = trainEquipment and safeWaitForChild(trainEquipment, "ApplyTakeUpStationaryTrainEquipment")
+local statEffect = trainEquipment and safeWaitForChild(trainEquipment, "ApplyBindingTrainingEffect")
+local boostEffect = trainEquipment and safeWaitForChild(trainEquipment, "ApplyBindingTrainingBoostEffect")
+local trainRemote = trainEquipment and safeWaitForChild(trainEquipment, "ApplyStationaryTrain")
+local speedRemote = trainSystem and safeWaitForChild(trainSystem, "TrainSpeedHasChanged")
+
+if not takeUp or not trainRemote then
+    error("[❌] Remotes não carregados! Verifique se tá no Train to Fight.")
+end
+
+-- Configs
+local CONFIG = {
+    SpamDelay = 0.1,  -- Mais safe (mude pra 0.05 se quiser mais rápido)
+    BoostInterval = 2.5,
+    SitInterval = 4,
+    SpeedValue = 1000,
+    AntiAFK = true,
+    GodMode = true
+}
+
+-- Safe call
+local function try(func, obj, ...)
+    local args = {...}
+    local success, err = pcall(function()
+        func(obj, unpack(args))
+    end)
+    if not success then warn("[⚠️] Erro:", err) end
+end
+
+-- Core training
+local function startTraining()
+    try(takeUp.InvokeServer, takeUp, true)
+    try(statEffect.InvokeServer, statEffect)
+    try(boostEffect.InvokeServer, boostEffect)
+    try(speedRemote.FireServer, speedRemote, CONFIG.SpeedValue)
+end
+
+-- God Mode
+local function toggleGod(enabled)
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        local hum = player.Character.Humanoid
+        if enabled then
+            hum.MaxHealth = math.huge
+            hum.Health = math.huge
+        else
+            hum.MaxHealth = 100
+            hum.Health = 100
+        end
+    end
+end
+
+-- Anti-AFK
+local function antiAFK()
+    if not CONFIG.AntiAFK or not player.Character then return end
+    local root = player.Character:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.CFrame = root.CFrame * CFrame.new(0, 0.1, 0)
+    end
+end
+
+-- GUI (agora com fix!)
+local ScreenGui = Instance.new("ScreenGui")
+local Frame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local ToggleBtn = Instance.new("TextButton")
+
+-- Espera PlayerGui com timeout
+local playerGui = safeWaitForChild(player, "PlayerGui", 10)
+if not playerGui then
+    warn("[⚠️] PlayerGui não carregou! GUI pulada.")
+else
+    ScreenGui.Parent = playerGui  -- FIX: Sem o duplo PlayerGui!
+    ScreenGui.Name = "TrainToFightGUI"
+    ScreenGui.ResetOnSpawn = false
+
+    Frame.Parent = ScreenGui
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Frame.BorderSizePixel = 0
+    Frame.Position = UDim2.new(0, 10, 0, 10)
+    Frame.Size = UDim2.new(0, 200, 0, 100)
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+
+    Title.Parent = Frame
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 0, 0, 0)
+    Title.Size = UDim2.new(1, 0, 0.4, 0)
+    Title.Font = Enum.Font.GothamBold
+    Title.Text = "Train to Fight Auto ✅"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextScaled = true
+
+    ToggleBtn.Parent = Frame
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    ToggleBtn.Position = UDim2.new(0, 10, 0.5, 10)
+    ToggleBtn.Size = UDim2.new(0.8, 0, 0.35, 0)
+    ToggleBtn.Font = Enum.Font.Gotham
+    ToggleBtn.Text = "ON - Press F1 to Toggle"
+    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleBtn.TextScaled = true
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = ToggleBtn
+
+    local autoEnabled = true
+    local connections = {}
+
+    local function toggleAuto()
+        autoEnabled = not autoEnabled
+        ToggleBtn.Text = autoEnabled and "ON - Press F1" or "OFF - Press F1"
+        ToggleBtn.BackgroundColor3 = autoEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+    end
+
+    ToggleBtn.MouseButton1Click:Connect(toggleAuto)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.F1 then toggleAuto() end
+    end)
+
+    -- Loops
+    local function createLoops()
+        connections.boost = RunService.Heartbeat:Connect(function()
+            if not autoEnabled then return end
+            try(statEffect.InvokeServer, statEffect)
+            try(boostEffect.InvokeServer, boostEffect)
+        end)
+
+        connections.spam = RunService.Heartbeat:Connect(function()
+            if not autoEnabled then return end
+            try(trainRemote.InvokeServer, trainRemote)
+            task.wait(CONFIG.SpamDelay)
+        end)
+
+        task.spawn(function()
+            while true do
+                if autoEnabled then
+                    try(takeUp.InvokeServer, takeUp, true)
+                end
+                task.wait(CONFIG.SitInterval)
+            end
+        end)
+
+        if CONFIG.AntiAFK then
+            connections.afk = RunService.Heartbeat:Connect(antiAFK)
+        end
+    end
+
+    -- Cleanup
+    local function cleanup()
+        for _, conn in pairs(connections) do
+            if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+        end
+    end
+
+    local origToggle = toggleAuto
+    toggleAuto = function()
+        origToggle()
+        if not autoEnabled then
+            cleanup()
+        else
+            createLoops()
+        end
+    end
+
+    createLoops()
+end  -- Fim do if playerGui
+
+-- God e Reconnect
+if CONFIG.GodMode then
+    toggleGod(true)
+    player.CharacterAdded:Connect(function()
+        task.wait(1)
+        toggleGod(true)
+    end)
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(3)
+    startTraining()
+end)
+
+if player.Character then
+    startTraining()
+end
+
+print("[✅ Train to Fight Auto CORRIGIDO! GUI Fixada. By_HOC]")
+print("[📋] F1 pra toggle | Sem yields infinitos agora!")
+print("[⚠️] Se lagar, mude SpamDelay pra 0.2")
+
+-- Hide GUI after 5s
+task.spawn(function()
+    task.wait(5)
+    if Frame then
+        Frame:TweenPosition(UDim2.new(0, -210, 0, 10), "Out", "Quad", 1, true)
+    end
+end)
